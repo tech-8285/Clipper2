@@ -1239,13 +1239,22 @@ namespace Clipper2Lib
       foreach (PolyPathD child in polytree) { ShowPolyPathStructure(child, 1); }
     }
 
-    public static TriangulateResult Triangulate(Paths64 pp, out Paths64 solution, bool useDelaunay = true)
+    // When 'includeCollinear' is true, every distinct vertex in the supplied
+    // polygon outlines (including vertices that sit in the middle of a straight
+    // outline segment) is preserved and becomes a vertex of the resulting
+    // triangles. The outline edges connecting these vertices are retained as
+    // fixed constraint edges, so meshes sharing an outline keep matching
+    // vertices and join without cracks. The default (false) preserves the
+    // original behaviour of removing redundant collinear vertices.
+    public static TriangulateResult Triangulate(Paths64 pp, out Paths64 solution,
+      bool useDelaunay = true, bool includeCollinear = false)
     {
-      Delaunay d = new Delaunay(useDelaunay);
+      Delaunay d = new Delaunay(useDelaunay, includeCollinear);
       return d.Execute(pp, out solution);
     }
 
-    public static TriangulateResult Triangulate(PathsD pp, int decPlaces, out PathsD solution, bool useDelaunay = true)
+    public static TriangulateResult Triangulate(PathsD pp, int decPlaces, out PathsD solution,
+      bool useDelaunay = true, bool includeCollinear = false)
     {
       double scale;
       if (decPlaces <= 0) scale = 1.0;
@@ -1254,7 +1263,7 @@ namespace Clipper2Lib
 
       Paths64 pp64 = Clipper.ScalePaths64(pp, scale);
 
-      Delaunay d = new Delaunay(useDelaunay);
+      Delaunay d = new Delaunay(useDelaunay, includeCollinear);
       TriangulateResult result = d.Execute(pp64, out Paths64 sol64);
       if (result == TriangulateResult.success)
         solution = Clipper.ScalePathsD(sol64, 1.0 / scale);

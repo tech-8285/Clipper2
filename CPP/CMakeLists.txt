@@ -279,6 +279,7 @@ if(CLIPPER2_TESTS)
     Tests/TestRectClip.cpp
     Tests/TestSimplifyPath.cpp
     Tests/TestTrimCollinear.cpp
+    Tests/TestTriangulation.cpp
     Tests/TestWindows.cpp
   )
 

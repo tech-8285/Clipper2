@@ -19,16 +19,20 @@ type
   TTriangulateResult = (trSuccess, trFail, trNoPolygons, trPathsIntersect);
 
   function Triangulate(const paths: TPaths64; out solution: TPaths64;
-    useDelaunay: Boolean = true): TTriangulateResult; overload;
+    useDelaunay: Boolean = true;
+    includeCollinear: Boolean = false): TTriangulateResult; overload;
   function Triangulate(const paths: TPathsD;
     decPlaces: integer; out solution: TPathsD;
-    useDelaunay: Boolean = true): TTriangulateResult; overload;
+    useDelaunay: Boolean = true;
+    includeCollinear: Boolean = false): TTriangulateResult; overload;
 
   // these functions are intended only for debugging
   function Triangulate(const paths: TPaths64; out solution, actives: TPaths64;
-    useDelaunay: Boolean = true): TTriangulateResult; overload;
+    useDelaunay: Boolean = true;
+    includeCollinear: Boolean = false): TTriangulateResult; overload;
   function Triangulate(const paths: TPathsD; decPlaces: integer; out solution: TPathsD;
-    out activeEdges: TPathsD; useDelaunay: Boolean): TTriangulateResult; overload;
+    out activeEdges: TPathsD; useDelaunay: Boolean;
+    includeCollinear: Boolean = false): TTriangulateResult; overload;
 
 implementation
 
@@ -91,6 +95,7 @@ type
     horzEdgeStack   : TEdgeStack; // used to delay horizontal edge processing
     locMinStack     : TVertexStack;
     fUseDelaunay    : Boolean;
+    fIncludeCollinear: Boolean;
     fActives        : PEdge;      // simple (unsorted) double-linked list
     lowestVertex    : PVertex;
     function FixupEdgeIntersects(edgeList: TListEx): Boolean;
@@ -109,7 +114,8 @@ type
   protected
     currentY  : Int64;
   public
-    constructor Create(useDelaunay: Boolean = true);
+    constructor Create(useDelaunay: Boolean = true;
+      includeCollinear: Boolean = false);
     destructor Destroy; override;
     procedure Clear;
     procedure AddPath(const path: TPath64);
@@ -477,7 +483,8 @@ end;
 // TDelaunay
 //------------------------------------------------------------------------------
 
-constructor TDelaunay.Create(useDelaunay: Boolean);
+constructor TDelaunay.Create(useDelaunay: Boolean;
+  includeCollinear: Boolean);
 begin
   vertexList      := TListEx.Create;
   edgeList        := TListEx.Create;
@@ -486,6 +493,7 @@ begin
   horzEdgeStack   := TEdgeStack.Create;
   locMinStack     := TVertexStack.Create;
   fUseDelaunay    := useDelaunay;
+  fIncludeCollinear := includeCollinear;
   //lowestVertex    := nil;
 end;
 //------------------------------------------------------------------------------
@@ -1462,7 +1470,15 @@ begin
         lowestVertex := vPrev;
 
     iNext := NextIdx(i, len);
-    if CrossProductIsZero(vPrev.pt, path[i], path[iNext]) then
+    if not fIncludeCollinear and
+      CrossProductIsZero(vPrev.pt, path[i], path[iNext]) then
+    begin
+      i := iNext;
+      Continue;
+    end;
+    // nb: consecutive duplicate vertices must never create
+    // zero-length edges, even when collinear vertices are kept
+    if fIncludeCollinear and PointsEqual(path[i], vPrev.pt) then
     begin
       i := iNext;
       Continue;
@@ -1471,23 +1487,36 @@ begin
     // ascend up next bound to LocMax
     while (path[i].Y <= vPrev.pt.Y) do
     begin
+      if fIncludeCollinear and PointsEqual(path[i], vPrev.pt) then
+      begin
+        i := iNext;
+        iNext := NextIdx(i, len);
+        Continue;
+      end;
       v := AddVertex(path[i]);
       CreateEdge(vPrev, v, ekAsc);
       vPrev := v;
       i := iNext;
       iNext := NextIdx(i, len);
 
-      while CrossProductIsZero(vPrev.pt, path[i], path[iNext]) do
-      begin
-        i := iNext;
-        iNext := NextIdx(i, len);
-      end;
+      if not fIncludeCollinear then
+        while CrossProductIsZero(vPrev.pt, path[i], path[iNext]) do
+        begin
+          i := iNext;
+          iNext := NextIdx(i, len);
+        end;
     end;
 
     vPrevPrev := vPrev;
     // Now at a locMax, so descend to next locMin
     while (i <> i0) and (path[i].Y >= vPrev.pt.Y) do
     begin
+      if fIncludeCollinear and PointsEqual(path[i], vPrev.pt) then
+      begin
+        i := iNext;
+        iNext := NextIdx(i, len);
+        Continue;
+      end;
       v := AddVertex(path[i]);
       CreateEdge(v, vPrev, ekDesc);
       vPrevPrev := vPrev;
@@ -1495,11 +1524,12 @@ begin
       i := iNext;
       iNext := NextIdx(i, len);
 
-      while CrossProductIsZero(vPrev.pt, path[i], path[iNext]) do
-      begin
-        i := iNext;
-        iNext := NextIdx(i, len);
-      end;
+      if not fIncludeCollinear then
+        while CrossProductIsZero(vPrev.pt, path[i], path[iNext]) do
+        begin
+          i := iNext;
+          iNext := NextIdx(i, len);
+        end;
     end;
 
     // now at the next locMin
@@ -1546,11 +1576,12 @@ end;
 //------------------------------------------------------------------------------
 
 function Triangulate(const paths: TPaths64; out solution: TPaths64;
-  useDelaunay: Boolean = true): TTriangulateResult;
+  useDelaunay: Boolean = true;
+  includeCollinear: Boolean = false): TTriangulateResult;
 var
   d: TDelaunay;
 begin
-  d := TDelaunay.Create(useDelaunay);
+  d := TDelaunay.Create(useDelaunay, includeCollinear);
   try
     d.AddPaths(paths);
     Result := d.Triangulate(solution);
@@ -1562,13 +1593,14 @@ end;
 
 function Triangulate(const paths: TPaths64;
   out solution, actives: TPaths64;
-  useDelaunay: Boolean = true): TTriangulateResult;
+  useDelaunay: Boolean = true;
+  includeCollinear: Boolean = false): TTriangulateResult;
 var
   i: integer;
   d: TDelaunay;
   a: PEdge;
 begin
-  d := TDelaunay.Create(useDelaunay);
+  d := TDelaunay.Create(useDelaunay, includeCollinear);
   try
     d.AddPaths(paths);
     Result := d.Triangulate(solution);
@@ -1591,7 +1623,8 @@ end;
 
 function Triangulate(const paths: TPathsD;
   decPlaces: integer; out solution: TPathsD;
-  useDelaunay: Boolean = true): TTriangulateResult; overload;
+  useDelaunay: Boolean = true;
+  includeCollinear: Boolean = false): TTriangulateResult; overload;
 var
   scale: double;
   pp64, sol64: TPaths64;
@@ -1600,14 +1633,16 @@ begin
   else if decPlaces > 8 then scale := Power(10, 8)
   else scale := Power(10, decPlaces);
   pp64 := ScalePaths(paths, scale);
-  Result := Clipper.Triangulation.Triangulate(pp64, sol64, useDelaunay);
+  Result := Clipper.Triangulation.Triangulate(pp64, sol64,
+    useDelaunay, includeCollinear);
   if Result = TTriangulateResult.trSuccess then
     solution := ScalePathsD(sol64, 1/scale);
 end;
 //------------------------------------------------------------------------------
 
 function Triangulate(const paths: TPathsD; decPlaces: integer;
-  out solution: TPathsD; out activeEdges: TPathsD; useDelaunay: Boolean): TTriangulateResult;
+  out solution: TPathsD; out activeEdges: TPathsD; useDelaunay: Boolean;
+  includeCollinear: Boolean = false): TTriangulateResult;
 var
   i: integer;
   d: TDelaunay;
@@ -1621,7 +1656,7 @@ begin
   pp64 := ScalePaths(paths, scale);
   solution := nil;
 
-  d := TDelaunay.Create(useDelaunay);
+  d := TDelaunay.Create(useDelaunay, includeCollinear);
   try try
     d.AddPaths(pp64);
     Result := d.Triangulate(pp64);

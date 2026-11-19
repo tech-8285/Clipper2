@@ -20,8 +20,21 @@ namespace Clipper2Lib
   enum class TriangulateResult { success, fail, no_polygons, paths_intersect };
 
   // Triangulate - this function will not accept intesecting paths
-  TriangulateResult Triangulate(const Paths64& pp, Paths64& solution, bool useDelaunay = true);
-  TriangulateResult Triangulate(const PathsD& pp, int decPlaces, PathsD& solution, bool useDelaunay = true);
+  //
+  // When 'includeCollinear' is false (the default), collinear vertices that
+  // lie in the middle of a straight outline segment are removed before
+  // triangulation (the original behaviour).
+  //
+  // When 'includeCollinear' is true, every distinct vertex in the supplied
+  // polygon outlines (including vertices that sit on a straight outline
+  // segment) is preserved and becomes a vertex of the resulting triangles.
+  // The outline edges that connect these vertices are retained as fixed
+  // constraint edges, so adjacent meshes that share an outline keep matching
+  // vertices and join without cracks.
+  TriangulateResult Triangulate(const Paths64& pp, Paths64& solution,
+    bool useDelaunay = true, bool includeCollinear = false);
+  TriangulateResult Triangulate(const PathsD& pp, int decPlaces, PathsD& solution,
+    bool useDelaunay = true, bool includeCollinear = false);
 
 } // Clipper2Lib namespace
 #endif  // CLIPPER_TRIANGULATION_H

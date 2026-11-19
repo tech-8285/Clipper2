@@ -72,6 +72,7 @@ namespace Clipper2Lib
     std::stack<Edge*>         horzEdgeStack;
     std::stack<Vertex2*>      locMinStack;
     bool                      useDelaunay = true;
+    bool                      includeCollinear = false;
     Vertex2*                  lowermostVertex = nullptr;
     Edge*                     firstActive = nullptr;
     void AddPath(const Path64& path);
@@ -91,7 +92,8 @@ namespace Clipper2Lib
     void RemoveEdgeFromActives(Edge* edge);
     void ForceLegal(Edge* edge);
   public:
-    explicit Delaunay(bool delaunay = true) : useDelaunay(delaunay) {};
+    explicit Delaunay(bool delaunay = true, bool keepCollinear = false)
+      : useDelaunay(delaunay), includeCollinear(keepCollinear) {};
     ~Delaunay() { CleanUp(); };
     Paths64 Execute(const Paths64& paths, TriangulateResult& triResult);
   };
@@ -1119,7 +1121,15 @@ namespace Clipper2Lib
           lowermostVertex = vPrev;
 
       iNext = Next(i, len);
-      if (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
+      if (!includeCollinear &&
+        CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
+      {
+        i = iNext;
+        continue;
+      }
+      // nb: consecutive duplicate vertices must never create
+      // zero-length edges, even when collinear vertices are kept
+      if (includeCollinear && path[i] == vPrev->pt)
       {
         i = iNext;
         continue;
@@ -1128,23 +1138,37 @@ namespace Clipper2Lib
       // ascend up next bound to LocMax
       while (path[i].y <= vPrev->pt.y)
       {
+        // nb: never create zero-length edges from duplicate vertices
+        if (includeCollinear && path[i] == vPrev->pt)
+        {
+          i = iNext;
+          iNext = Next(i, len);
+          continue;
+        }
         Vertex2* v = allVertices.emplace_back(new Vertex2(path[i]));
         CreateEdge(vPrev, v, EdgeKind::ascend);
         vPrev = v;
         i = iNext;
         iNext = Next(i, len);
 
-        while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
-        {
-          i = iNext;
-          iNext = Next(i, len);
-        }
+        if (!includeCollinear)
+          while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
+          {
+            i = iNext;
+            iNext = Next(i, len);
+          }
       }
 
       // Now at a locMax, so descend to next locMin
       Vertex2* vPrevPrev = vPrev;
       while (i != i0 && path[i].y >= vPrev->pt.y)
       {
+        if (includeCollinear && path[i] == vPrev->pt)
+        {
+          i = iNext;
+          iNext = Next(i, len);
+          continue;
+        }
         Vertex2* v = allVertices.emplace_back(new Vertex2(path[i]));
         CreateEdge(v, vPrev, EdgeKind::descend);
         vPrevPrev = vPrev;
@@ -1152,11 +1176,12 @@ namespace Clipper2Lib
         i = iNext;
         iNext = Next(i, len);
 
-        while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
-        {
-          i = iNext;
-          iNext = Next(i, len);
-        }
+        if (!includeCollinear)
+          while (CrossProductSign(vPrev->pt, path[i], path[iNext]) == 0)
+          {
+            i = iNext;
+            iNext = Next(i, len);
+          }
       }
 
       // now at the next locMin
@@ -1194,15 +1219,17 @@ namespace Clipper2Lib
     return (allVertices.size() > 2);
   }
 
-  TriangulateResult Triangulate(const Paths64& pp, Paths64& solution, bool useDelaunay)
+  TriangulateResult Triangulate(const Paths64& pp, Paths64& solution,
+    bool useDelaunay, bool includeCollinear)
   {
     TriangulateResult result;
-    Delaunay d(useDelaunay);
+    Delaunay d(useDelaunay, includeCollinear);
     solution = d.Execute(pp, result);
     return result;
   }
 
-  TriangulateResult Triangulate(const PathsD& pp, int decPlaces, PathsD& solution, bool useDelaunay)
+  TriangulateResult Triangulate(const PathsD& pp, int decPlaces, PathsD& solution,
+    bool useDelaunay, bool includeCollinear)
   {
     int ec = 0;
     double scale;
@@ -1212,7 +1239,7 @@ namespace Clipper2Lib
     else scale = std::pow(10, decPlaces);
     Paths64 pp64 = ScalePaths<int64_t, double>(pp, scale, ec);
 
-    Delaunay d(useDelaunay);
+    Delaunay d(useDelaunay, includeCollinear);
     Paths64 sol64 = d.Execute(pp64, result);
     solution = ScalePaths<double, int64_t>(sol64, 1 / scale, ec);
     return result;

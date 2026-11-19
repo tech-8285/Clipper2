@@ -79,12 +79,14 @@ namespace Clipper2Lib
     private readonly Stack<Edge> horzEdgeStack = new Stack<Edge>();
     private readonly Stack<Vertex2> locMinStack = new Stack<Vertex2>();
     private readonly bool useDelaunay;
+    private readonly bool includeCollinear;
     private Edge? firstActive = null;
     private Vertex2? lowermostVertex = null;
 
-    public Delaunay(bool delaunay = true)
+    public Delaunay(bool delaunay = true, bool keepCollinear = false)
     {
       useDelaunay = delaunay;
+      includeCollinear = keepCollinear;
     }
 
     private void AddPath(Path64 path)
@@ -135,7 +137,15 @@ namespace Clipper2Lib
             lowermostVertex = vPrev;
 
         iNext = Next(i, len);
-        if (InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
+        if (!includeCollinear &&
+            InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
+        {
+          i = iNext;
+          continue;
+        }
+        // nb: consecutive duplicate vertices must never create
+        // zero-length edges, even when collinear vertices are kept
+        if (includeCollinear && path[i].Equals(vPrev.pt))
         {
           i = iNext;
           continue;
@@ -144,6 +154,12 @@ namespace Clipper2Lib
         // ascend up next bound to LocMax
         while (path[i].Y <= vPrev.pt.Y)
         {
+          if (includeCollinear && path[i].Equals(vPrev.pt))
+          {
+            i = iNext;
+            iNext = Next(i, len);
+            continue;
+          }
           Vertex2 v = new Vertex2(path[i]);
           allVertices.Add(v);
           CreateEdge(vPrev, v, EdgeKind.ascend);
@@ -151,17 +167,24 @@ namespace Clipper2Lib
           i = iNext;
           iNext = Next(i, len);
 
-          while (InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
-          {
-            i = iNext;
-            iNext = Next(i, len);
-          }
+          if (!includeCollinear)
+            while (InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
+            {
+              i = iNext;
+              iNext = Next(i, len);
+            }
         }
 
         // Now at a locMax, so descend to next locMin
         Vertex2 vPrevPrev = vPrev;
         while (i != i0 && path[i].Y >= vPrev.pt.Y)
         {
+          if (includeCollinear && path[i].Equals(vPrev.pt))
+          {
+            i = iNext;
+            iNext = Next(i, len);
+            continue;
+          }
           Vertex2 v = new Vertex2(path[i]);
           allVertices.Add(v);
           CreateEdge(v, vPrev, EdgeKind.descend);
@@ -170,11 +193,12 @@ namespace Clipper2Lib
           i = iNext;
           iNext = Next(i, len);
 
-          while (InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
-          {
-            i = iNext;
-            iNext = Next(i, len);
-          }
+          if (!includeCollinear)
+            while (InternalClipper.CrossProductSign(vPrev.pt, path[i], path[iNext]) == 0)
+            {
+              i = iNext;
+              iNext = Next(i, len);
+            }
         }
 
         // now at the next locMin
