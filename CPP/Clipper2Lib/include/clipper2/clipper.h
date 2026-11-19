@@ -206,12 +206,31 @@ namespace Clipper2Lib {
     return rc.Execute(paths);
   }
 
+#ifdef USINGZ
+  inline Paths64 RectClip(const Rect64& rect, const Paths64& paths,
+    ZCallback64 zCallback)
+  {
+    if (rect.IsEmpty() || paths.empty()) return Paths64();
+    RectClip64 rc(rect);
+    rc.SetZCallback(zCallback);
+    return rc.Execute(paths);
+  }
+#endif
+
   inline Paths64 RectClip(const Rect64& rect, const Path64& path)
   {
     if (rect.IsEmpty() || path.empty()) return Paths64();
     RectClip64 rc(rect);
     return rc.Execute(Paths64{ path });
   }
+
+#ifdef USINGZ
+  inline Paths64 RectClip(const Rect64& rect, const Path64& path,
+    ZCallback64 zCallback)
+  {
+    return RectClip(rect, Paths64{ path }, zCallback);
+  }
+#endif
 
   inline PathsD RectClip(const RectD& rect, const PathsD& paths, int precision = 2)
   {
@@ -228,6 +247,42 @@ namespace Clipper2Lib {
       rc.Execute(pp), 1 / scale, error_code);
   }
 
+#ifdef USINGZ
+  inline PathsD RectClip(const RectD& rect, const PathsD& paths,
+    int precision, ZCallbackD zCallback)
+  {
+    if (rect.IsEmpty() || paths.empty()) return PathsD();
+    int error_code = 0;
+    CheckPrecisionRange(precision, error_code);
+    if (error_code) return PathsD();
+    const double scale = std::pow(10, precision);
+    const double inv_scale = 1 / scale;
+    Rect64 r = ScaleRect<int64_t, double>(rect, scale);
+    RectClip64 rc(r);
+    if (zCallback)
+      // de-scale the coordinates passed to the callback (see ClipperD::ZCB)
+      rc.SetZCallback([inv_scale, zCallback](
+        const Point64& e1bot, const Point64& e1top,
+        const Point64& e2bot, const Point64& e2top, Point64& pt)
+        {
+          PointD tmp = PointD(pt) * inv_scale;
+          zCallback(PointD(e1bot) * inv_scale, PointD(e1top) * inv_scale,
+            PointD(e2bot) * inv_scale, PointD(e2top) * inv_scale, tmp);
+          pt.z = tmp.z; // only update 'z'
+        });
+    Paths64 pp = ScalePaths<int64_t, double>(paths, scale, error_code);
+    if (error_code) return PathsD(); // ie: error_code result is lost
+    return ScalePaths<double, int64_t>(
+      rc.Execute(pp), inv_scale, error_code);
+  }
+
+  inline PathsD RectClip(const RectD& rect, const PathD& path,
+    int precision, ZCallbackD zCallback)
+  {
+    return RectClip(rect, PathsD{ path }, precision, zCallback);
+  }
+#endif
+
   inline PathsD RectClip(const RectD& rect, const PathD& path, int precision = 2)
   {
     return RectClip(rect, PathsD{ path }, precision);
@@ -240,10 +295,29 @@ namespace Clipper2Lib {
     return rcl.Execute(lines);
   }
 
+#ifdef USINGZ
+  inline Paths64 RectClipLines(const Rect64& rect, const Paths64& lines,
+    ZCallback64 zCallback)
+  {
+    if (rect.IsEmpty() || lines.empty()) return Paths64();
+    RectClipLines64 rcl(rect);
+    rcl.SetZCallback(zCallback);
+    return rcl.Execute(lines);
+  }
+#endif
+
   inline Paths64 RectClipLines(const Rect64& rect, const Path64& line)
   {
     return RectClipLines(rect, Paths64{ line });
   }
+
+#ifdef USINGZ
+  inline Paths64 RectClipLines(const Rect64& rect, const Path64& line,
+    ZCallback64 zCallback)
+  {
+    return RectClipLines(rect, Paths64{ line }, zCallback);
+  }
+#endif
 
   inline PathsD RectClipLines(const RectD& rect, const PathsD& lines, int precision = 2)
   {
@@ -259,6 +333,42 @@ namespace Clipper2Lib {
     p = rcl.Execute(p);
     return ScalePaths<double, int64_t>(p, 1 / scale, error_code);
   }
+
+#ifdef USINGZ
+  inline PathsD RectClipLines(const RectD& rect, const PathsD& lines,
+    int precision, ZCallbackD zCallback)
+  {
+    if (rect.IsEmpty() || lines.empty()) return PathsD();
+    int error_code = 0;
+    CheckPrecisionRange(precision, error_code);
+    if (error_code) return PathsD();
+    const double scale = std::pow(10, precision);
+    const double inv_scale = 1 / scale;
+    Rect64 r = ScaleRect<int64_t, double>(rect, scale);
+    RectClipLines64 rcl(r);
+    if (zCallback)
+      // de-scale the coordinates passed to the callback (see ClipperD::ZCB)
+      rcl.SetZCallback([inv_scale, zCallback](
+        const Point64& e1bot, const Point64& e1top,
+        const Point64& e2bot, const Point64& e2top, Point64& pt)
+        {
+          PointD tmp = PointD(pt) * inv_scale;
+          zCallback(PointD(e1bot) * inv_scale, PointD(e1top) * inv_scale,
+            PointD(e2bot) * inv_scale, PointD(e2top) * inv_scale, tmp);
+          pt.z = tmp.z; // only update 'z'
+        });
+    Paths64 p = ScalePaths<int64_t, double>(lines, scale, error_code);
+    if (error_code) return PathsD();
+    p = rcl.Execute(p);
+    return ScalePaths<double, int64_t>(p, inv_scale, error_code);
+  }
+
+  inline PathsD RectClipLines(const RectD& rect, const PathD& line,
+    int precision, ZCallbackD zCallback)
+  {
+    return RectClipLines(rect, PathsD{ line }, precision, zCallback);
+  }
+#endif
 
   inline PathsD RectClipLines(const RectD& rect, const PathD& line, int precision = 2)
   {

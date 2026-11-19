@@ -314,6 +314,44 @@ namespace Clipper2Lib {
   // RectClip64
   //----------------------------------------------------------------------------
 
+#ifdef USINGZ
+  inline void GetRectEdge(const Path64& rectPath, Location loc,
+    Point64& e1, Point64& e2)
+  {
+    switch (loc)
+    {
+    case Location::Left:   e1 = rectPath[0]; e2 = rectPath[3]; break;
+    case Location::Top:    e1 = rectPath[0]; e2 = rectPath[1]; break;
+    case Location::Right:  e1 = rectPath[1]; e2 = rectPath[2]; break;
+    default:               e1 = rectPath[2]; e2 = rectPath[3]; break; // Bottom
+    }
+  }
+
+  void RectClip64::SetZ(const Point64& e1bot, const Point64& e1top,
+    const Point64& e2bot, const Point64& e2top, Point64& ip)
+  {
+    // This mirrors the z-value semantics of ClipperBase::SetZ()
+    // (see clipper.engine.cpp): subject vertices take priority over
+    // clip (rect) vertices, and intersections that don't coincide
+    // with a vertex are assigned a stable default value.
+    // The callback, when assigned, determines the final z-value.
+    if (ip == e1bot) ip.z = e1bot.z;
+    else if (ip == e1top) ip.z = e1top.z;
+    else if (ip == e2bot) ip.z = e2bot.z;
+    else if (ip == e2top) ip.z = e2top.z;
+    else ip.z = 0;
+    if (zCallback_) zCallback_(e1bot, e1top, e2bot, e2top, ip);
+  }
+
+  void RectClip64::SetZ(const Point64& seg1, const Point64& seg2,
+    Location edge_loc, Point64& ip)
+  {
+    Point64 e1, e2;
+    GetRectEdge(rect_as_path_, edge_loc, e1, e2);
+    SetZ(seg1, seg2, e1, e2, ip);
+  }
+#endif
+
   OutPt2* RectClip64::Add(Point64 pt, bool start_new)
   {
     // this method is only called by InternalExecute.
@@ -504,6 +542,13 @@ namespace Clipper2Lib {
         continue;
       }
 
+#ifdef USINGZ
+      // the segment prev_pt -> path[i] crosses the rect boundary
+      // at ip, so assign ip a z-value that's consistent with
+      // the z-value semantics of boolean clipping
+      SetZ(prev_pt, path[i], crossing_loc, ip);
+#endif
+
       ////////////////////////////////////////////////////
       // we must be crossing the rect boundary to get here
       ////////////////////////////////////////////////////
@@ -529,6 +574,9 @@ namespace Clipper2Lib {
         // intersect pt but we'll also need the first intersect pt (ip2)
         loc = prev;
         GetIntersection(rect_as_path_, prev_pt, path[i], loc, ip2);
+#ifdef USINGZ
+        SetZ(prev_pt, path[i], loc, ip2);
+#endif
         if (crossing_prev != Location::Inside && crossing_prev != loc) //579
           AddCorner(crossing_prev, loc);
 
@@ -982,6 +1030,11 @@ namespace Clipper2Lib {
         ++i;
         continue;
       }
+#ifdef USINGZ
+      // assign the intersection pt a z-value that's consistent
+      // with the z-value semantics of boolean clipping
+      SetZ(prev_pt, path[i], crossing_loc, ip);
+#endif
 
       ////////////////////////////////////////////////////
       // we must be crossing the rect boundary to get here
@@ -998,6 +1051,9 @@ namespace Clipper2Lib {
         crossing_loc = prev;
         GetIntersection(rect_as_path_,
           prev_pt, path[i], crossing_loc, ip2);
+#ifdef USINGZ
+        SetZ(prev_pt, path[i], crossing_loc, ip2);
+#endif
         Add(ip2, true);
         Add(ip);
       }

@@ -12,12 +12,24 @@
 
 #include "clipper2/clipper.core.h"
 #include <queue>
+#ifdef USINGZ
+#include <functional>
+#endif
 
 namespace Clipper2Lib
 {
 
   // Location: the order is important here, see StartLocsIsClockwise()
   enum class Location { Left, Top, Right, Bottom, Inside };
+
+#ifdef USINGZ
+  // This typedef is identical to the ZCallback64 typedef in
+  // clipper.engine.h (duplicate identical typedefs are permitted),
+  // and it's repeated here so this header remains self-contained.
+  typedef std::function<void(
+    const Point64& e1bot, const Point64& e1top,
+    const Point64& e2bot, const Point64& e2top, Point64& pt)> ZCallback64;
+#endif
 
   class OutPt2;
   typedef std::vector<OutPt2*> OutPt2List;
@@ -55,11 +67,22 @@ namespace Clipper2Lib
     OutPt2* Add(Point64 pt, bool start_new = false);
     void AddCorner(Location prev, Location curr);
     void AddCorner(Location& loc, bool isClockwise);
+#ifdef USINGZ
+  protected:
+    ZCallback64 zCallback_ = nullptr;
+    void SetZ(const Point64& e1bot, const Point64& e1top,
+      const Point64& e2bot, const Point64& e2top, Point64& ip);
+    void SetZ(const Point64& seg1, const Point64& seg2,
+      Location edge_loc, Point64& ip);
+#endif
   public:
     explicit RectClip64(const Rect64& rect) :
       rect_(rect),
       rect_as_path_(rect.AsPath()),
       rect_mp_(rect.MidPoint()) {}
+#ifdef USINGZ
+    void SetZCallback(ZCallback64 cb) { zCallback_ = cb; }
+#endif
     Paths64 Execute(const Paths64& paths);
   };
 
